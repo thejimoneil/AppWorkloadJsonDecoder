@@ -1,5 +1,8 @@
 # AppWorkload Log JSON Decoder
 # This script extracts and prettifies JSON from "Get policies =" entries in Appworkload.log
+# Compatible with Windows PowerShell 5.1+ and PowerShell 7+
+
+#Requires -Version 5.1
 
 param(
     [string]$LogPath = "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\Appworkload.log",
@@ -27,7 +30,7 @@ USAGE EXAMPLES:
     .\AppWorkloadJsonDecoder.ps1
 
     # Search for a specific App GUID
-    .\AppWorkloadJsonDecoder.ps1 -AppGUID "7211687c-d63c-4470-b1bf-4f1714fc4d9f"
+    .\AppWorkloadJsonDecoder.ps1 -AppGUID "66de285e-94ce-49ef-9d29-8ab814df9db6"
 
     # Get most recent entry with custom output directory
     .\AppWorkloadJsonDecoder.ps1 -OutputDir "C:\Analysis"
@@ -109,6 +112,23 @@ try {
         try {
             $jsonObject = $jsonString | ConvertFrom-Json
             
+            # Debug: Show JSON structure information
+            Write-Host "`nDEBUG: JSON Structure Analysis:" -ForegroundColor Yellow
+            Write-Host "JSON Type: $($jsonObject.GetType().Name)" -ForegroundColor Gray
+            if ($jsonObject -is [Array]) {
+                Write-Host "Array Length: $($jsonObject.Count)" -ForegroundColor Gray
+                if ($jsonObject.Count -gt 0) {
+                    Write-Host "First Object Type: $($jsonObject[0].GetType().Name)" -ForegroundColor Gray
+                    $firstObjProperties = ($jsonObject[0] | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name) -join ', '
+                    Write-Host "First Object Properties: $firstObjProperties" -ForegroundColor Gray
+                }
+            } else {
+                Write-Host "Single Object Type: $($jsonObject.GetType().Name)" -ForegroundColor Gray
+                $objProperties = ($jsonObject | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name) -join ', '
+                Write-Host "Object Properties: $objProperties" -ForegroundColor Gray
+            }
+            Write-Host ""
+            
             # If searching by AppGUID, verify we found the correct policy
             if ($AppGUID) {
                 $foundPolicy = $jsonObject | Where-Object { $_.Id -eq $AppGUID }
@@ -139,23 +159,101 @@ try {
         }
         
         # Create output file names using ID and datetime
-        $policyId = $jsonObject[0].Id  # Get the first policy's ID
+        # Handle both single policy and array of policies
+        if ($jsonObject -is [Array] -and $jsonObject.Count -gt 0) {
+            $policyId = $jsonObject[0].Id  # Get the first policy's ID from array
+            $targetPolicy = $jsonObject[0]
+            Write-Host "DEBUG: Using ID from array[0]: $policyId" -ForegroundColor Gray
+        } elseif ($jsonObject.Id) {
+            $policyId = $jsonObject.Id     # Single policy object
+            $targetPolicy = $jsonObject
+            Write-Host "DEBUG: Using ID from single object: $policyId" -ForegroundColor Gray
+        } else {
+            Write-Host "ERROR: Could not extract Policy ID from JSON data" -ForegroundColor Red
+            Write-Host "JSON Object Details:" -ForegroundColor Red
+            Write-Host "Type: $($jsonObject.GetType().Name)" -ForegroundColor Red
+            if ($jsonObject -is [Array]) {
+                Write-Host "Array Count: $($jsonObject.Count)" -ForegroundColor Red
+            }
+            $availableProperties = ($jsonObject | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name) -join ', '
+            Write-Host "Available Properties: $availableProperties" -ForegroundColor Red
+            Write-Host "Raw JSON Sample (first 500 chars): $($jsonString.Substring(0, [Math]::Min(500, $jsonString.Length)))" -ForegroundColor Red
+            exit 1
+        }
+        
         $jsonOutputPath = Join-Path $OutputDir "$($policyId)_$($dateTimeString).json"
         $scriptOutputPath = Join-Path $OutputDir "$($policyId)_$($dateTimeString)_DetectionRule.ps1"
         
-        $prettyJson = $jsonObject | ConvertTo-Json -Depth 10
-        
-        # Display the prettified JSON
-        Write-Host "`nPrettified JSON:" -ForegroundColor Green
-        Write-Host $prettyJson
-        
-        # Save JSON to file
-        $prettyJson | Out-File -FilePath $jsonOutputPath -Encoding UTF8
-        Write-Host "`nJSON saved to: $jsonOutputPath" -ForegroundColor Green
+        # Enhance the JSON by parsing nested JSON strings
+        try {
+            $enhancedObject = $jsonObject.PSObject.Copy()
+            
+            # Parse RequirementRules if it's a JSON string
+            if ($enhancedObject.RequirementRules -and $enhancedObject.RequirementRules -is [string]) {
+                try {
+                    $enhancedObject.RequirementRules = $enhancedObject.RequirementRules | ConvertFrom-Json
+                } catch {
+                    Write-Warning "Could not parse RequirementRules as JSON"
+                }
+            }
+            
+            # Parse InstallEx if it's a JSON string
+            if ($enhancedObject.InstallEx -and $enhancedObject.InstallEx -is [string]) {
+                try {
+                    $enhancedObject.InstallEx = $enhancedObject.InstallEx | ConvertFrom-Json
+                } catch {
+                    Write-Warning "Could not parse InstallEx as JSON"
+                }
+            }
+            
+            # Parse ReturnCodes if it's a JSON string
+            if ($enhancedObject.ReturnCodes -and $enhancedObject.ReturnCodes -is [string]) {
+                try {
+                    $enhancedObject.ReturnCodes = $enhancedObject.ReturnCodes | ConvertFrom-Json
+                } catch {
+                    Write-Warning "Could not parse ReturnCodes as JSON"
+                }
+            }
+            
+            # Parse DetectionRule if it's a JSON string
+            if ($enhancedObject.DetectionRule -and $enhancedObject.DetectionRule -is [string]) {
+                try {
+                    $enhancedObject.DetectionRule = $enhancedObject.DetectionRule | ConvertFrom-Json
+                } catch {
+                    Write-Warning "Could not parse DetectionRule as JSON"
+                }
+            }
+            
+            # Create enhanced pretty JSON
+            $prettyJson = $enhancedObject | ConvertTo-Json -Depth 10
+            
+            # Display the enhanced JSON
+            Write-Host "`nPrettified JSON (with parsed nested objects):" -ForegroundColor Green
+            Write-Host $prettyJson
+            
+            # Save the enhanced JSON
+            $prettyJson | Out-File -FilePath $jsonOutputPath -Encoding UTF8
+            Write-Host "`nJSON saved to: $jsonOutputPath" -ForegroundColor Green
+            
+        } catch {
+            Write-Warning "Could not create enhanced JSON version: $($_.Exception.Message)"
+            # Fallback to basic pretty JSON
+            $prettyJson = $jsonObject | ConvertTo-Json -Depth 10
+            Write-Host "`nPrettified JSON:" -ForegroundColor Green
+            Write-Host $prettyJson
+            
+            # Save JSON to file
+            $prettyJson | Out-File -FilePath $jsonOutputPath -Encoding UTF8
+            Write-Host "`nJSON saved to: $jsonOutputPath" -ForegroundColor Green
+        }
         
         # Display some key information about the policies
         Write-Host "`nPolicy Summary:" -ForegroundColor Magenta
-        foreach ($policy in $jsonObject) {
+        
+        # Handle both single policy and array of policies for display
+        $policiesToProcess = if ($jsonObject -is [Array]) { $jsonObject } else { @($jsonObject) }
+        
+        foreach ($policy in $policiesToProcess) {
             Write-Host "  - Name: $($policy.Name)" -ForegroundColor White
             Write-Host "    ID: $($policy.Id)" -ForegroundColor Gray
             Write-Host "    Version: $($policy.Version)" -ForegroundColor Gray
