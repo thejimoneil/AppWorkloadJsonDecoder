@@ -5,18 +5,23 @@ A PowerShell script that extracts and prettifies JSON policy data from Microsoft
 ## Features
 
 - 🔍 **Smart Search**: Find the most recent log entry for any app or search by specific App GUID
-- 📄 **JSON Extraction**: Automatically extracts and prettifies JSON policy data
-- 🛠️ **Detection Rule Decoding**: Decodes base64-encoded PowerShell detection scripts
+- 📄 **Enhanced JSON Extraction**: Automatically extracts and prettifies JSON policy data with parsed nested objects
+- 🛠️ **Detection Rule Decoding**: Decodes base64-encoded PowerShell detection scripts with BOM removal
+- 🎯 **Intelligent JSON Parsing**: Converts nested JSON strings (RequirementRules, InstallEx, ReturnCodes, DetectionRule) into proper objects
 - 📁 **Organized Output**: Creates timestamped files with meaningful names
 - 🧹 **Clean Scripts**: Removes BOM characters that can cause script execution errors
 - 💬 **Interactive Mode**: User-friendly prompts for easy operation
-- 📖 **Comprehensive Help**: Built-in documentation and usage examples
+- � **Enhanced Debugging**: Comprehensive error handling and diagnostic information
+- �📖 **Comprehensive Help**: Built-in documentation and usage examples
+- ⚡ **Cross-Compatible**: Works with both Windows PowerShell 5.1 and PowerShell 7+
 
 ## Requirements
 
-- Windows PowerShell 5.1 or PowerShell 7+
+- **Windows PowerShell 5.1** or **PowerShell 7+** (compatible with both)
 - Access to Intune Management Extension logs (typically requires administrative privileges)
 - Microsoft Intune environment with deployed applications
+
+> **Note**: The script has been tested and is compatible with both Windows PowerShell 5.1 (default on Windows 10/11) and PowerShell 7+. It uses only built-in cmdlets and avoids PowerShell 7-specific features for maximum compatibility.
 
 ## Installation
 
@@ -43,7 +48,7 @@ The script will prompt you to choose:
 
 #### Search for a specific App GUID:
 ```powershell
-.\AppWorkloadJsonDecoder.ps1 -AppGUID "7211687c-d63c-4470-b1bf-4f1714fc4d9f"
+.\AppWorkloadJsonDecoder.ps1 -AppGUID "66de285e-94ce-49ef-9d29-8ab814df9db6"
 ```
 
 #### Custom output directory:
@@ -74,39 +79,40 @@ The script will prompt you to choose:
 
 The script generates two files with timestamps for easy organization:
 
-### 1. JSON Policy File
+### 1. Enhanced JSON Policy File
 **Format**: `{AppGUID}_{DateTime}.json`
 
-**Example**: `7211687c-d63c-4470-b1bf-4f1714fc4d9f_2025-10-14_06-48-58.json`
+**Example**: `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58.json`
 
-Contains prettified JSON with complete policy configuration including:
+Contains enhanced JSON with complete policy configuration including:
 - Application metadata (ID, Name, Version)
 - Installation/uninstallation commands
-- System requirements
-- Return codes
-- Detection rules (encoded)
-- Installation settings
+- **RequirementRules** - Parsed as structured objects (OS requirements, system specs)
+- **InstallEx** - Installation settings as readable objects (timeouts, retries, visibility)
+- **ReturnCodes** - Array of return code objects with types
+- **DetectionRule** - Parsed detection rule structure
+- All other policy settings in clean, readable format
 
 ### 2. Detection Rule Script
 **Format**: `{AppGUID}_{DateTime}_DetectionRule.ps1`
 
-**Example**: `7211687c-d63c-4470-b1bf-4f1714fc4d9f_2025-10-14_06-48-58_DetectionRule.ps1`
+**Example**: `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_DetectionRule.ps1`
 
 Contains:
-- Decoded PowerShell detection script
-- Header with metadata (App name, Policy ID, extraction date)
-- Clean script without BOM characters (ready to execute)
+- Decoded PowerShell detection script (ready to execute)
+- Header with metadata (App name, Policy ID, extraction date, detection type)
+- Clean script without BOM characters or encoding issues
 
 ## Examples
 
 ### Example 1: Analyze VLC Media Player Policy
 ```powershell
-.\AppWorkloadJsonDecoder.ps1 -AppGUID "7211687c-d63c-4470-b1bf-4f1714fc4d9f"
+.\AppWorkloadJsonDecoder.ps1 -AppGUID "66de285e-94ce-49ef-9d29-8ab814df9db6"
 ```
 
 **Output**:
-- `7211687c-d63c-4470-b1bf-4f1714fc4d9f_2025-10-14_06-48-58.json`
-- `7211687c-d63c-4470-b1bf-4f1714fc4d9f_2025-10-14_06-48-58_DetectionRule.ps1`
+- `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58.json` (Enhanced with parsed objects)
+- `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_DetectionRule.ps1`
 
 ### Example 2: Batch Analysis
 ```powershell
@@ -122,12 +128,37 @@ New-Item -ItemType Directory -Path "C:\IntuneAnalysis" -Force
 ### Console Output
 ```
 Analyzing Appworkload.log for the most recent 'Get policies =' entry...
-Found most recent entry for App GUID 7211687c-d63c-4470-b1bf-4f1714fc4d9f
+Found most recent entry for App GUID 66de285e-94ce-49ef-9d29-8ab814df9db6
 Extracted JSON string length: 2152 characters
+
+DEBUG: JSON Structure Analysis:
+JSON Type: PSCustomObject
+Object Properties: [list of all available properties]
+
+Prettified JSON (with parsed nested objects):
+{
+  "RequirementRules": {
+    "RequiredOSArchitecture": 2,
+    "MinimumWindows10BuildNumer": "10.0.18363",
+    "RunAs32Bit": false
+  },
+  "InstallEx": {
+    "RunAs": 1,
+    "RequiresLogon": true,
+    "MaxRetries": 3,
+    "MaxRunTimeInMinutes": 60
+  },
+  "ReturnCodes": [
+    {
+      "ReturnCode": 0,
+      "Type": 1
+    }
+  ]
+}
 
 Policy Summary:
   - Name: VLC
-    ID: 7211687c-d63c-4470-b1bf-4f1714fc4d9f
+    ID: 66de285e-94ce-49ef-9d29-8ab814df9db6
     Version: 1
     Intent: 1
 
@@ -175,6 +206,20 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 - Check Intune portal for correct App GUID
 - Use option 2 to see the most recent entry
 
+#### 5. PowerShell Version Compatibility
+**Problem**: Script fails on older PowerShell versions
+**Solution**: 
+- The script requires PowerShell 5.1 minimum
+- Check version with `$PSVersionTable.PSVersion`
+- Upgrade PowerShell if needed
+
+#### 6. Enhanced JSON Parsing Warnings
+**Problem**: Warnings about parsing nested JSON objects
+**Solution**: 
+- These are informational warnings
+- Script will still work and create output files
+- Original data is preserved even if parsing fails
+
 ## Log File Location
 
 Default Intune Management Extension log locations:
@@ -197,6 +242,10 @@ The script automatically decodes Type 3 (PowerShell) detection rules for easy an
 - **v1.1**: Added App GUID search functionality
 - **v1.2**: Added BOM character removal for clean scripts
 - **v1.3**: Enhanced help system and interactive mode
+- **v1.4**: Added PowerShell 5.1 compatibility (removed PowerShell 7+ dependencies)
+- **v1.5**: Enhanced JSON parsing for nested objects (RequirementRules, InstallEx, ReturnCodes)
+- **v1.6**: Streamlined output to single enhanced JSON file
+- **v1.7**: Added comprehensive debugging and error handling
 
 ## Contributing
 
