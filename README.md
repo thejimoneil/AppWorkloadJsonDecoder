@@ -261,10 +261,6 @@ This script is provided as-is for educational and administrative purposes. Use a
 - **PowerShell ISE/VS Code**: For editing and testing detection scripts
 - **Intune Management Extension**: The service that processes these policies
 
-## Community Resources
-
-📚 **[Check out our Endpoint Management Resources Hub](RESOURCES.md)** - A comprehensive collection of educational resources, tools, blogs, and community links for Microsoft Intune, Configuration Manager, PowerShell, and more!
-
 ---
 
 **Note**: This tool is for analyzing existing Intune policies and is not affiliated with Microsoft. Always test detection scripts in a safe environment before deploying to production.
