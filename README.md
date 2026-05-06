@@ -88,22 +88,22 @@ Policy Summary:
   Name          : VLC
   ID            : 66de285e-94ce-49ef-9d29-8ab814df9db6
   Version       : 1
-  Intent        : 1
+  Intent        : 1 (Required)
   Install Cmd   : "C:\Program Files\VideoLAN\VLC\vlc-3.0.16-win64.exe" /L=1033 /S
 
   Requirement Rules:
-    OS Architecture   : 2
+    OS Architecture   : 2 (x64)
     Min Windows Build : 10.0.18363
     Run as 32-bit     : False
 
   Install Settings:
-    Run As            : 1
+    Run As            : 1 (User)
     Requires Logon    : False
     Max Runtime (min) : 60
     Max Retries       : 3
 
   Detection Rule:
-    Detection Type : 3
+    Detection Type : 3 (PowerShell Script)
 
     Decoded Detection Script:
 $versionCheck = "3.0.16"
@@ -142,13 +142,45 @@ Default IME log directory: `C:\ProgramData\Microsoft\IntuneManagementExtension\L
 - `AgentExecutor.log`
 - `IntuneManagementExtension.log`
 
+## Intent Values
+
+| Value | Description |
+|-------|-------------|
+| 0 | Not Applicable |
+| 1 | Required |
+| 2 | Available |
+| 3 | Uninstall |
+| 4 | Available Without Enrollment |
+
+## OS Architecture Values
+
+The `RequiredOSArchitecture` field is a bitmask — values can be combined (e.g., `96` = 32 + 64 = `x86 on ARM64` + `x64 on ARM64`).
+
+| Value | Description |
+|-------|-------------|
+| 1 | x86 |
+| 2 | x64 |
+| 4 | ARM |
+| 8 | Neutral |
+| 16 | ARM64 |
+| 32 | x86 on ARM64 |
+| 64 | x64 on ARM64 |
+
+## Run As Values
+
+| Value | Description |
+|-------|-------------|
+| 0 | System |
+| 1 | User |
+
 ## Detection Rule Types
 
-| Type | Description |
-|------|-------------|
-| 1 | File or folder detection |
-| 2 | MSI product code detection |
-| 3 | PowerShell script detection (decoded and saved by this tool) |
+| Value | Description |
+|-------|-------------|
+| 1 | File or Folder |
+| 2 | MSI Product Code |
+| 3 | PowerShell Script (decoded and saved by this tool) |
+| 4 | Registry |
 
 ---
 
