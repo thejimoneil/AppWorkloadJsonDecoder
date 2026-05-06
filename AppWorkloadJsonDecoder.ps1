@@ -217,6 +217,9 @@ if (-not (Test-Path $AppWorkloadLog)) {
                 Write-Host "  ID            : $($policy.Id)"      -ForegroundColor Gray
                 Write-Host "  Version       : $($policy.Version)" -ForegroundColor Gray
                 Write-Host "  Intent        : $($policy.Intent)"  -ForegroundColor Gray
+                if ($policy.InstallCommandLine) {
+                    Write-Host "  Install Cmd   : $($policy.InstallCommandLine)" -ForegroundColor Gray
+                }
 
                 # Decode RequirementRules
                 if ($policy.RequirementRules) {
@@ -313,42 +316,18 @@ if (-not (Test-Path $AgentExecutorLog)) {
             Write-Warning "No entries found for App ID '$AppID' in AgentExecutor.log"
         } else {
             $agentEntries = Get-MostRecentAttemptEntries -Lines $agentAllLines
-            $lastAgentDt  = Get-LogDateTime -Line ($agentEntries[$agentEntries.Count - 1])
-            $windowInfo   = if ($lastAgentDt) { "ending $($lastAgentDt.ToString('yyyy-MM-dd HH:mm:ss'))" } else { "" }
-
-            Write-Host "Most recent install attempt entries ($($agentEntries.Count) lines) $windowInfo :" -ForegroundColor Yellow
 
             $agentOutputLines = @()
             foreach ($line in $agentEntries) {
                 $msg     = Get-LogMessage -Line $line
                 $dt      = Get-LogDateTime -Line $line
                 $prefix  = if ($dt) { "[$($dt.ToString('yyyy-MM-dd HH:mm:ss'))] " } else { "" }
-                $display = "$prefix$msg"
-                Write-Host $display -ForegroundColor White
-                $agentOutputLines += $display
-            }
-
-            # Highlight detection / requirements related lines
-            $detectionLines   = @($agentEntries | Where-Object { $_ -imatch 'detect' })
-            $requirementLines = @($agentEntries | Where-Object { $_ -imatch 'requirement' })
-
-            if ($detectionLines.Count -gt 0) {
-                Write-Host "`n  Detection-related entries:" -ForegroundColor Red
-                foreach ($line in $detectionLines) {
-                    Write-Host "  $(Get-LogMessage -Line $line)" -ForegroundColor Yellow
-                }
-            }
-
-            if ($requirementLines.Count -gt 0) {
-                Write-Host "`n  Requirement-related entries:" -ForegroundColor Red
-                foreach ($line in $requirementLines) {
-                    Write-Host "  $(Get-LogMessage -Line $line)" -ForegroundColor Yellow
-                }
+                $agentOutputLines += "$prefix$msg"
             }
 
             $agentOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_AgentExecutor.txt"
             $agentOutputLines | Out-File -FilePath $agentOutputPath -Encoding UTF8
-            Write-Host "`nAgentExecutor entries saved to: $agentOutputPath" -ForegroundColor Green
+            Write-Host "AgentExecutor entries saved to: $agentOutputPath" -ForegroundColor Green
         }
     } catch {
         Write-Error "Error reading AgentExecutor.log: $($_.Exception.Message)"
@@ -370,24 +349,18 @@ if (-not (Test-Path $IMELog)) {
             Write-Warning "No entries found for App ID '$AppID' in IntuneManagementExtension.log"
         } else {
             $imeEntries = Get-MostRecentAttemptEntries -Lines $imeAllLines
-            $lastImeDt  = Get-LogDateTime -Line ($imeEntries[$imeEntries.Count - 1])
-            $windowInfo = if ($lastImeDt) { "ending $($lastImeDt.ToString('yyyy-MM-dd HH:mm:ss'))" } else { "" }
-
-            Write-Host "Most recent Intune policy entries ($($imeEntries.Count) lines) $windowInfo :" -ForegroundColor Yellow
 
             $imeOutputLines = @()
             foreach ($line in $imeEntries) {
                 $msg     = Get-LogMessage -Line $line
                 $dt      = Get-LogDateTime -Line $line
                 $prefix  = if ($dt) { "[$($dt.ToString('yyyy-MM-dd HH:mm:ss'))] " } else { "" }
-                $display = "$prefix$msg"
-                Write-Host $display -ForegroundColor White
-                $imeOutputLines += $display
+                $imeOutputLines += "$prefix$msg"
             }
 
             $imeOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_IME.txt"
             $imeOutputLines | Out-File -FilePath $imeOutputPath -Encoding UTF8
-            Write-Host "`nIME entries saved to: $imeOutputPath" -ForegroundColor Green
+            Write-Host "IME entries saved to: $imeOutputPath" -ForegroundColor Green
         }
     } catch {
         Write-Error "Error reading IntuneManagementExtension.log: $($_.Exception.Message)"

@@ -89,6 +89,7 @@ Policy Summary:
   ID            : 66de285e-94ce-49ef-9d29-8ab814df9db6
   Version       : 1
   Intent        : 1
+  Install Cmd   : "C:\Program Files\VideoLAN\VLC\vlc-3.0.16-win64.exe" /L=1033 /S
 
   Requirement Rules:
     OS Architecture   : 2
@@ -116,28 +117,9 @@ if($install){
     Detection script saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_DetectionRule.ps1
 
 === AgentExecutor.log ===
-Most recent install attempt entries (5 lines) ending 2025-10-14 06:49:05 :
-[2025-10-14 06:48:59] Policy id = 66de285e... execution started
-[2025-10-14 06:49:00] Detection check for app 66de285e...
-[2025-10-14 06:49:01] Detection result: NotInstalled for 66de285e...
-[2025-10-14 06:49:02] Requirement check for 66de285e...: passed
-[2025-10-14 06:49:05] Install triggered for 66de285e...
-
-  Detection-related entries:
-  Detection check for app 66de285e...
-  Detection result: NotInstalled for 66de285e...
-
-  Requirement-related entries:
-  Requirement check for 66de285e...: passed
-
 AgentExecutor entries saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_AgentExecutor.txt
 
 === IntuneManagementExtension.log ===
-Most recent Intune policy entries (3 lines) ending 2025-10-14 06:49:10 :
-[2025-10-14 06:48:55] Processing policy for app 66de285e...
-[2025-10-14 06:48:56] App 66de285e... assigned, intent=Install
-[2025-10-14 06:49:10] Sending install report for 66de285e...
-
 IME entries saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_IME.txt
 
 === Analysis Complete ===
