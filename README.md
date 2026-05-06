@@ -88,7 +88,7 @@ Policy Summary:
   Name          : VLC
   ID            : 66de285e-94ce-49ef-9d29-8ab814df9db6
   Version       : 1
-  Intent        : 1 (Required)
+  Intent        : 1 (Available)
   Install Cmd   : "C:\Program Files\VideoLAN\VLC\vlc-3.0.16-win64.exe" /L=1033 /S
 
   Requirement Rules:
@@ -97,7 +97,7 @@ Policy Summary:
     Run as 32-bit     : False
 
   Install Settings:
-    Run As            : 1 (User)
+    Run As            : 1 (System)
     Requires Logon    : False
     Max Runtime (min) : 60
     Max Retries       : 3
@@ -147,10 +147,10 @@ Default IME log directory: `C:\ProgramData\Microsoft\IntuneManagementExtension\L
 | Value | Description |
 |-------|-------------|
 | 0 | Not Applicable |
-| 1 | Required |
-| 2 | Available |
-| 3 | Uninstall |
-| 4 | Available Without Enrollment |
+| 1 | Available |
+| 3 | Required |
+| 4 | Uninstall |
+| 5 | Available Without Enrollment |
 
 ## OS Architecture Values
 
@@ -170,8 +170,8 @@ The `RequiredOSArchitecture` field is a bitmask — values can be combined (e.g.
 
 | Value | Description |
 |-------|-------------|
-| 0 | System |
-| 1 | User |
+| 0 | User |
+| 1 | System |
 
 ## Detection Rule Types
 

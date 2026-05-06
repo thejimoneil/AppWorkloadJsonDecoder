@@ -79,10 +79,10 @@ function Get-IntentLabel {
     param($Value)
     $label = switch ([int]$Value) {
         0 { "Not Applicable" }
-        1 { "Required" }
-        2 { "Available" }
-        3 { "Uninstall" }
-        4 { "Available Without Enrollment" }
+        1 { "Available" }
+        3 { "Required" }
+        4 { "Uninstall" }
+        5 { "Available Without Enrollment" }
         default { "Unknown" }
     }
     return "$Value ($label)"
@@ -117,8 +117,8 @@ function Get-OSArchitectureLabel {
 function Get-RunAsLabel {
     param($Value)
     $label = switch ([int]$Value) {
-        0 { "System" }
-        1 { "User" }
+        0 { "User" }
+        1 { "System" }
         default { "Unknown" }
     }
     return "$Value ($label)"
