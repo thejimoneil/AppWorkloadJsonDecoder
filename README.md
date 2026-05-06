@@ -1,67 +1,47 @@
-# AppWorkload JSON Decoder
+# Intune App Install Analyzer
 
-A PowerShell script that extracts and prettifies JSON policy data from Microsoft Intune Management Extension (IME) AppWorkload log files. This tool helps administrators analyze Intune application deployment policies and extract detection rules for troubleshooting and documentation purposes.
+A PowerShell script that analyzes three Microsoft Intune Management Extension (IME) log files for a specific App ID to surface the most recent install attempt details.
 
-## Features
+## Overview
 
-- 🔍 **Smart Search**: Find the most recent log entry for any app or search by specific App GUID
-- 📄 **Enhanced JSON Extraction**: Automatically extracts and prettifies JSON policy data with parsed nested objects
-- 🛠️ **Detection Rule Decoding**: Decodes base64-encoded PowerShell detection scripts with BOM removal
-- 🎯 **Intelligent JSON Parsing**: Converts nested JSON strings (RequirementRules, InstallEx, ReturnCodes, DetectionRule) into proper objects
-- 📁 **Organized Output**: Creates timestamped files with meaningful names
-- 🧹 **Clean Scripts**: Removes BOM characters that can cause script execution errors
-- 💬 **Interactive Mode**: User-friendly prompts for easy operation
-- � **Enhanced Debugging**: Comprehensive error handling and diagnostic information
-- �📖 **Comprehensive Help**: Built-in documentation and usage examples
-- ⚡ **Cross-Compatible**: Works with both Windows PowerShell 5.1 and PowerShell 7+
+| Log File | What it provides |
+|----------|-----------------|
+| `AppWorkload.log` | Install info — JSON decoded, detection script decoded from base64 |
+| `AgentExecutor.log` | Detection and requirements failure details |
+| `IntuneManagementExtension.log` | Overall policy info and high-level Intune action view |
 
 ## Requirements
 
-- **Windows PowerShell 5.1** or **PowerShell 7+** (compatible with both)
+- **Windows PowerShell 5.1** or **PowerShell 7+**
 - Access to Intune Management Extension logs (typically requires administrative privileges)
-- Microsoft Intune environment with deployed applications
-
-> **Note**: The script has been tested and is compatible with both Windows PowerShell 5.1 (default on Windows 10/11) and PowerShell 7+. It uses only built-in cmdlets and avoids PowerShell 7-specific features for maximum compatibility.
 
 ## Installation
 
-1. Download the `AppWorkloadJsonDecoder.ps1` script
-2. Place it in your preferred directory
-3. Ensure PowerShell execution policy allows script execution:
+1. Download `AppWorkloadJsonDecoder.ps1`
+2. Ensure PowerShell execution policy allows script execution:
    ```powershell
    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
    ```
 
 ## Usage
 
-### Interactive Mode
-Run the script without parameters for guided operation:
+### Provide App ID directly (recommended)
+```powershell
+.\AppWorkloadJsonDecoder.ps1 -AppID "66de285e-94ce-49ef-9d29-8ab814df9db6"
+```
+
+### Interactive (prompted) mode
 ```powershell
 .\AppWorkloadJsonDecoder.ps1
 ```
+The script will prompt for the App ID.
 
-The script will prompt you to choose:
-- **Option 1**: Search for a specific App GUID
-- **Option 2**: Get the most recent entry (any application)
-
-### Command Line Mode
-
-#### Search for a specific App GUID:
+### Custom log directory and output directory
 ```powershell
-.\AppWorkloadJsonDecoder.ps1 -AppGUID "66de285e-94ce-49ef-9d29-8ab814df9db6"
+.\AppWorkloadJsonDecoder.ps1 -AppID "66de285e-94ce-49ef-9d29-8ab814df9db6" -LogDir "C:\Logs" -OutputDir "C:\Analysis"
 ```
 
-#### Custom output directory:
-```powershell
-.\AppWorkloadJsonDecoder.ps1 -OutputDir "C:\Analysis"
-```
-
-#### Custom log file path:
-```powershell
-.\AppWorkloadJsonDecoder.ps1 -LogPath "C:\CustomPath\Appworkload.log"
-```
-
-#### Show help:
+### Show built-in help
 ```powershell
 .\AppWorkloadJsonDecoder.ps1 -Help
 ```
@@ -70,196 +50,123 @@ The script will prompt you to choose:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `-LogPath` | String | `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\Appworkload.log` | Path to the AppWorkload log file |
-| `-OutputDir` | String | `.` (current directory) | Directory where output files will be saved |
-| `-AppGUID` | String | `$null` | Specific App GUID to search for (optional) |
+| `-AppID` | String | *(prompted)* | App GUID to search for |
+| `-LogDir` | String | `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs` | Directory containing IME log files |
+| `-OutputDir` | String | `.` (current directory) | Directory where output files are saved |
 | `-Help` | Switch | `$false` | Display help information |
 
 ## Output Files
 
-The script generates two files with timestamps for easy organization:
+All output files are prefixed with `{AppID}_{DateTime}`:
 
-### 1. Enhanced JSON Policy File
-**Format**: `{AppGUID}_{DateTime}.json`
+| File | Contents |
+|------|----------|
+| `{AppID}_{DateTime}_AppWorkload.json` | Prettified JSON policy data from AppWorkload.log |
+| `{AppID}_{DateTime}_DetectionRule.ps1` | Decoded PowerShell detection script (ready to execute) |
+| `{AppID}_{DateTime}_AgentExecutor.txt` | Timestamped AgentExecutor.log entries for the app |
+| `{AppID}_{DateTime}_IME.txt` | Timestamped IntuneManagementExtension.log entries for the app |
 
-**Example**: `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58.json`
+## How "Most Recent Install Attempt" is Determined
 
-Contains enhanced JSON with complete policy configuration including:
-- Application metadata (ID, Name, Version)
-- Installation/uninstallation commands
-- **RequirementRules** - Parsed as structured objects (OS requirements, system specs)
-- **InstallEx** - Installation settings as readable objects (timeouts, retries, visibility)
-- **ReturnCodes** - Array of return code objects with types
-- **DetectionRule** - Parsed detection rule structure
-- All other policy settings in clean, readable format
+- **AppWorkload.log** — The most recent `Get policies =` line containing the App ID is used. Its timestamp sets the reference datetime for all output file names.
+- **AgentExecutor.log / IntuneManagementExtension.log** — All lines containing the App ID that fall within a **2-hour window ending at the most recent matching entry** are shown. This window reliably captures a single install attempt while filtering out older history.
 
-### 2. Detection Rule Script
-**Format**: `{AppGUID}_{DateTime}_DetectionRule.ps1`
+## Sample Console Output
 
-**Example**: `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_DetectionRule.ps1`
-
-Contains:
-- Decoded PowerShell detection script (ready to execute)
-- Header with metadata (App name, Policy ID, extraction date, detection type)
-- Clean script without BOM characters or encoding issues
-
-## Examples
-
-### Example 1: Analyze VLC Media Player Policy
-```powershell
-.\AppWorkloadJsonDecoder.ps1 -AppGUID "66de285e-94ce-49ef-9d29-8ab814df9db6"
 ```
+=== Intune App Install Analyzer ===
+App ID      : 66de285e-94ce-49ef-9d29-8ab814df9db6
+Log Dir     : C:\ProgramData\Microsoft\IntuneManagementExtension\Logs
+Output Dir  : .
 
-**Output**:
-- `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58.json` (Enhanced with parsed objects)
-- `66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_DetectionRule.ps1`
-
-### Example 2: Batch Analysis
-```powershell
-# Create analysis directory
-New-Item -ItemType Directory -Path "C:\IntuneAnalysis" -Force
-
-# Analyze most recent policy
-.\AppWorkloadJsonDecoder.ps1 -OutputDir "C:\IntuneAnalysis"
-```
-
-## Sample Output
-
-### Console Output
-```
-Analyzing Appworkload.log for the most recent 'Get policies =' entry...
-Found most recent entry for App GUID 66de285e-94ce-49ef-9d29-8ab814df9db6
-Extracted JSON string length: 2152 characters
-
-DEBUG: JSON Structure Analysis:
-JSON Type: PSCustomObject
-Object Properties: [list of all available properties]
-
-Prettified JSON (with parsed nested objects):
-{
-  "RequirementRules": {
-    "RequiredOSArchitecture": 2,
-    "MinimumWindows10BuildNumer": "10.0.18363",
-    "RunAs32Bit": false
-  },
-  "InstallEx": {
-    "RunAs": 1,
-    "RequiresLogon": true,
-    "MaxRetries": 3,
-    "MaxRunTimeInMinutes": 60
-  },
-  "ReturnCodes": [
-    {
-      "ReturnCode": 0,
-      "Type": 1
-    }
-  ]
-}
+=== AppWorkload.log ===
+Most recent policy fetch : 2025-10-14 06:48:58
+Extracted JSON length    : 2152 characters
+JSON saved to            : 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_AppWorkload.json
 
 Policy Summary:
-  - Name: VLC
-    ID: 66de285e-94ce-49ef-9d29-8ab814df9db6
-    Version: 1
-    Intent: 1
+  Name          : VLC
+  ID            : 66de285e-94ce-49ef-9d29-8ab814df9db6
+  Version       : 1
+  Intent        : 1
 
-  Detailed Information:
-    Detection Rule:
-      - Detection Type: 3
-      - Script Body (decoded):
+  Requirement Rules:
+    OS Architecture   : 2
+    Min Windows Build : 10.0.18363
+    Run as 32-bit     : False
+
+  Install Settings:
+    Run As            : 1
+    Requires Logon    : False
+    Max Runtime (min) : 60
+    Max Retries       : 3
+
+  Detection Rule:
+    Detection Type : 3
+
+    Decoded Detection Script:
 $versionCheck = "3.0.16"
 $install = Get-Item -Path "C:\Program Files\VideoLAN\VLC\vlc.exe" -ErrorAction SilentlyContinue
-
 if($install){
     if($install[0].VersionInfo.FileVersion -ge $versionCheck){
         Write-Host "Installed"
         Exit 0
     }
 }
+    Detection script saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_DetectionRule.ps1
+
+=== AgentExecutor.log ===
+Most recent install attempt entries (5 lines) ending 2025-10-14 06:49:05 :
+[2025-10-14 06:48:59] Policy id = 66de285e... execution started
+[2025-10-14 06:49:00] Detection check for app 66de285e...
+[2025-10-14 06:49:01] Detection result: NotInstalled for 66de285e...
+[2025-10-14 06:49:02] Requirement check for 66de285e...: passed
+[2025-10-14 06:49:05] Install triggered for 66de285e...
+
+  Detection-related entries:
+  Detection check for app 66de285e...
+  Detection result: NotInstalled for 66de285e...
+
+  Requirement-related entries:
+  Requirement check for 66de285e...: passed
+
+AgentExecutor entries saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_AgentExecutor.txt
+
+=== IntuneManagementExtension.log ===
+Most recent Intune policy entries (3 lines) ending 2025-10-14 06:49:10 :
+[2025-10-14 06:48:55] Processing policy for app 66de285e...
+[2025-10-14 06:48:56] App 66de285e... assigned, intent=Install
+[2025-10-14 06:49:10] Sending install report for 66de285e...
+
+IME entries saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_IME.txt
+
+=== Analysis Complete ===
 ```
 
 ## Troubleshooting
 
-### Common Issues
+| Problem | Solution |
+|---------|----------|
+| Access Denied | Run PowerShell as Administrator |
+| No entries found | Verify the App ID is correct; check log file paths with `-LogDir` |
+| Execution policy error | `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
+| Could not decode base64 | The detection rule may use a different detection type (non-script) |
 
-#### 1. Access Denied
-**Problem**: Cannot access the log file
-**Solution**: Run PowerShell as Administrator
+## Log File Locations
 
-#### 2. No Entries Found
-**Problem**: Script reports no "Get policies =" entries
-**Solutions**: 
-- Verify the log file path is correct
-- Check if Intune policies have been processed recently
-- Ensure the App GUID is correct
+Default IME log directory: `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\`
 
-#### 3. Script Execution Policy
-**Problem**: Cannot run the script due to execution policy
-**Solution**: 
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
+- `AppWorkload.log`
+- `AgentExecutor.log`
+- `IntuneManagementExtension.log`
 
-#### 4. Invalid App GUID
-**Problem**: No entries found for the specified App GUID
-**Solution**: 
-- Run in interactive mode to see available options
-- Check Intune portal for correct App GUID
-- Use option 2 to see the most recent entry
+## Detection Rule Types
 
-#### 5. PowerShell Version Compatibility
-**Problem**: Script fails on older PowerShell versions
-**Solution**: 
-- The script requires PowerShell 5.1 minimum
-- Check version with `$PSVersionTable.PSVersion`
-- Upgrade PowerShell if needed
-
-#### 6. Enhanced JSON Parsing Warnings
-**Problem**: Warnings about parsing nested JSON objects
-**Solution**: 
-- These are informational warnings
-- Script will still work and create output files
-- Original data is preserved even if parsing fails
-
-## Log File Location
-
-Default Intune Management Extension log locations:
-- **AppWorkload.log**: `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\Appworkload.log`
-- **Alternative locations**: Check `C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\` for other log files
-
-## Understanding Detection Rules
-
-Detection rules determine how Intune verifies if an application is installed. Common types:
-
-- **Type 1**: File or folder detection
-- **Type 2**: MSI product code detection  
-- **Type 3**: PowerShell script detection (most flexible)
-
-The script automatically decodes Type 3 (PowerShell) detection rules for easy analysis and testing.
-
-## Version History
-
-- **v1.0**: Initial release with basic JSON extraction
-- **v1.1**: Added App GUID search functionality
-- **v1.2**: Added BOM character removal for clean scripts
-- **v1.3**: Enhanced help system and interactive mode
-- **v1.4**: Added PowerShell 5.1 compatibility (removed PowerShell 7+ dependencies)
-- **v1.5**: Enhanced JSON parsing for nested objects (RequirementRules, InstallEx, ReturnCodes)
-- **v1.6**: Streamlined output to single enhanced JSON file
-- **v1.7**: Added comprehensive debugging and error handling
-
-## Contributing
-
-Feel free to submit issues, feature requests, or pull requests to improve this tool.
-
-## License
-
-This script is provided as-is for educational and administrative purposes. Use at your own discretion in your environment.
-
-## Related Tools
-
-- **Microsoft Intune**: Application deployment and management
-- **PowerShell ISE/VS Code**: For editing and testing detection scripts
-- **Intune Management Extension**: The service that processes these policies
+| Type | Description |
+|------|-------------|
+| 1 | File or folder detection |
+| 2 | MSI product code detection |
+| 3 | PowerShell script detection (decoded and saved by this tool) |
 
 ---
 
