@@ -73,6 +73,73 @@ Write-Host "Log Dir     : $LogDir"       -ForegroundColor White
 Write-Host "Output Dir  : $OutputDir`n"  -ForegroundColor White
 
 # ---------------------------------------------------------------------------
+# Helper: decode Intent numeric value to human-readable label.
+# ---------------------------------------------------------------------------
+function Get-IntentLabel {
+    param($Value)
+    $label = switch ([int]$Value) {
+        0 { "Not Applicable" }
+        1 { "Required" }
+        2 { "Available" }
+        3 { "Uninstall" }
+        4 { "Available Without Enrollment" }
+        default { "Unknown" }
+    }
+    return "$Value ($label)"
+}
+
+# ---------------------------------------------------------------------------
+# Helper: decode RequiredOSArchitecture bitmask to human-readable label.
+# ---------------------------------------------------------------------------
+function Get-OSArchitectureLabel {
+    param($Value)
+    $archNames = @{
+        1  = "x86"
+        2  = "x64"
+        4  = "ARM"
+        8  = "Neutral"
+        16 = "ARM64"
+        32 = "x86 on ARM64"
+        64 = "x64 on ARM64"
+    }
+    $intVal = [int]$Value
+    $matched = @()
+    foreach ($flag in 1, 2, 4, 8, 16, 32, 64) {
+        if ($intVal -band $flag) { $matched += $archNames[$flag] }
+    }
+    if ($matched.Count -gt 0) { return "$intVal ($($matched -join ', '))" }
+    return "$intVal (Unknown)"
+}
+
+# ---------------------------------------------------------------------------
+# Helper: decode RunAs numeric value to human-readable label.
+# ---------------------------------------------------------------------------
+function Get-RunAsLabel {
+    param($Value)
+    $label = switch ([int]$Value) {
+        0 { "System" }
+        1 { "User" }
+        default { "Unknown" }
+    }
+    return "$Value ($label)"
+}
+
+# ---------------------------------------------------------------------------
+# Helper: decode DetectionType numeric value to human-readable label.
+# ---------------------------------------------------------------------------
+function Get-DetectionTypeLabel {
+    param($Value)
+    $label = switch ([int]$Value) {
+        1 { "File or Folder" }
+        2 { "MSI Product Code" }
+        3 { "PowerShell Script" }
+        4 { "Registry" }
+        default { "Unknown" }
+    }
+    return "$Value ($label)"
+}
+
+# ---------------------------------------------------------------------------
 # Helper: parse datetime from a CMTrace-format log line.
 # Handles time strings like "06:48:58.5778926" and "06:48:58.577+000".
 # ---------------------------------------------------------------------------
@@ -216,7 +283,7 @@ if (-not (Test-Path $AppWorkloadLog)) {
                 Write-Host "  Name          : $($policy.Name)"    -ForegroundColor White
                 Write-Host "  ID            : $($policy.Id)"      -ForegroundColor Gray
                 Write-Host "  Version       : $($policy.Version)" -ForegroundColor Gray
-                Write-Host "  Intent        : $($policy.Intent)"  -ForegroundColor Gray
+                Write-Host "  Intent        : $(Get-IntentLabel $policy.Intent)"  -ForegroundColor Gray
                 if ($policy.InstallCommandLine) {
                     Write-Host "  Install Cmd   : $($policy.InstallCommandLine)" -ForegroundColor Gray
                 }
@@ -226,7 +293,7 @@ if (-not (Test-Path $AppWorkloadLog)) {
                     try {
                         $reqRules = $policy.RequirementRules | ConvertFrom-Json
                         Write-Host "`n  Requirement Rules:" -ForegroundColor Cyan
-                        Write-Host "    OS Architecture   : $($reqRules.RequiredOSArchitecture)"     -ForegroundColor Gray
+                        Write-Host "    OS Architecture   : $(Get-OSArchitectureLabel $reqRules.RequiredOSArchitecture)"     -ForegroundColor Gray
                         Write-Host "    Min Windows Build : $($reqRules.MinimumWindows10BuildNumer)" -ForegroundColor Gray
                         Write-Host "    Run as 32-bit     : $($reqRules.RunAs32Bit)"                 -ForegroundColor Gray
                     } catch {
@@ -239,7 +306,7 @@ if (-not (Test-Path $AppWorkloadLog)) {
                     try {
                         $installEx = $policy.InstallEx | ConvertFrom-Json
                         Write-Host "`n  Install Settings:" -ForegroundColor Cyan
-                        Write-Host "    Run As            : $($installEx.RunAs)"               -ForegroundColor Gray
+                        Write-Host "    Run As            : $(Get-RunAsLabel $installEx.RunAs)"               -ForegroundColor Gray
                         Write-Host "    Requires Logon    : $($installEx.RequiresLogon)"       -ForegroundColor Gray
                         Write-Host "    Max Runtime (min) : $($installEx.MaxRunTimeInMinutes)" -ForegroundColor Gray
                         Write-Host "    Max Retries       : $($installEx.MaxRetries)"          -ForegroundColor Gray
@@ -254,7 +321,7 @@ if (-not (Test-Path $AppWorkloadLog)) {
                         $detectionRules = @($policy.DetectionRule | ConvertFrom-Json)
                         Write-Host "`n  Detection Rule:" -ForegroundColor Cyan
                         foreach ($rule in $detectionRules) {
-                            Write-Host "    Detection Type : $($rule.DetectionType)" -ForegroundColor Gray
+                            Write-Host "    Detection Type : $(Get-DetectionTypeLabel $rule.DetectionType)" -ForegroundColor Gray
                             if ($rule.DetectionText) {
                                 try {
                                     $detectionText = $rule.DetectionText | ConvertFrom-Json
@@ -273,7 +340,7 @@ if (-not (Test-Path $AppWorkloadLog)) {
 # Detection Rule Script for $($policy.Name)
 # Policy ID     : $($policy.Id)
 # Extracted on  : $(Get-Date)
-# Detection Type: $($rule.DetectionType)
+# Detection Type: $(Get-DetectionTypeLabel $rule.DetectionType)
 
 "@
                                             $scriptOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_DetectionRule.ps1"
