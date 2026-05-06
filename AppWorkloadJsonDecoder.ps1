@@ -138,15 +138,61 @@ if (-not (Test-Path $AppWorkloadLog)) {
     Write-Warning "AppWorkload.log not found at: $AppWorkloadLog"
 } else {
     try {
-        # Find lines containing both the AppID and a policy payload
-        $rawLines = @(Get-Content $AppWorkloadLog |
-            Where-Object { $_ -like "*$AppID*" -and $_ -like "*Get policies =*" })
+        # Collect every "Get policies =" line in the log.  We intentionally
+        # do NOT pre-filter by AppID here: the AppID can appear anywhere in a
+        # "Get policies =" line (e.g. nested inside another app's policy as a
+        # supersedence/dependency reference).  Pre-filtering on the raw text
+        # would cause the wrong app's policy to be selected when the AppID
+        # matches such a nested field rather than a top-level policy entry.
+        $allPolicyLines = @(Get-Content $AppWorkloadLog |
+            Where-Object { $_ -like "*Get policies =*" })
 
-        if ($rawLines.Count -eq 0) {
+        $marker         = "Get policies = "
+        $mostRecent     = $null
+        $jsonString     = $null
+        $jsonObject     = $null
+        $targetPolicies = @()
+
+        if ($allPolicyLines.Count -eq 0) {
+            Write-Warning "No 'Get policies =' entries found in AppWorkload.log"
+        } else {
+            # Walk from newest to oldest.  For each line that contains the
+            # AppID as plain text (quick pre-filter), parse the JSON and
+            # confirm the AppID is a genuine top-level policy Id before
+            # accepting the entry.  This guarantees we display the correct
+            # App ID and policy data.
+            for ($i = $allPolicyLines.Count - 1; $i -ge 0; $i--) {
+                $line = $allPolicyLines[$i]
+                if ($line -notlike "*$AppID*") { continue }
+
+                $markerIdx = $line.IndexOf($marker)
+                $jsonEnd   = $line.LastIndexOf("]LOG]!")
+                if ($markerIdx -lt 0) { continue }
+
+                $jsonStart = $markerIdx + $marker.Length
+                $candidate = if ($jsonEnd -gt $jsonStart) {
+                    $line.Substring($jsonStart, $jsonEnd - $jsonStart)
+                } else {
+                    $line.Substring($jsonStart)
+                }
+
+                try {
+                    $parsed   = $candidate | ConvertFrom-Json
+                    $matching = @($parsed | Where-Object { $_.Id -eq $AppID })
+                    if ($matching.Count -gt 0) {
+                        $mostRecent     = $line
+                        $jsonString     = $candidate
+                        $jsonObject     = $parsed
+                        $targetPolicies = $matching
+                        break
+                    }
+                } catch { continue }
+            }
+        }
+
+        if (-not $mostRecent) {
             Write-Warning "No 'Get policies =' entries found for App ID '$AppID' in AppWorkload.log"
         } else {
-            $mostRecent = $rawLines | Select-Object -Last 1
-
             # Determine datetime for output file naming
             $logDt = Get-LogDateTime -Line $mostRecent
             if ($logDt) {
@@ -156,127 +202,95 @@ if (-not (Test-Path $AppWorkloadLog)) {
                 Write-Warning "Could not parse datetime from AppWorkload.log entry; using current time for file names."
             }
 
-            # Extract the JSON payload that follows "Get policies = "
-            $marker    = "Get policies = "
-            $markerIdx = $mostRecent.IndexOf($marker)
-            $jsonEnd   = $mostRecent.LastIndexOf("]LOG]!")
+            Write-Host "Extracted JSON length    : $($jsonString.Length) characters" -ForegroundColor Cyan
 
-            if ($markerIdx -lt 0) {
-                Write-Warning "Could not locate '$marker' marker in the log line."
-            } else {
-                $jsonStart  = $markerIdx + $marker.Length
-                $jsonString = if ($jsonEnd -gt $jsonStart) {
-                    $mostRecent.Substring($jsonStart, $jsonEnd - $jsonStart)
-                } else {
-                    $mostRecent.Substring($jsonStart)
+            # Save full prettified JSON
+            $prettyJson     = $jsonObject | ConvertTo-Json -Depth 10
+            $jsonOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_AppWorkload.json"
+            $prettyJson | Out-File -FilePath $jsonOutputPath -Encoding UTF8
+            Write-Host "JSON saved to            : $jsonOutputPath" -ForegroundColor Green
+
+            # Per-policy summary and decoded fields
+            Write-Host "`nPolicy Summary:" -ForegroundColor Yellow
+            foreach ($policy in $targetPolicies) {
+                Write-Host "  Name          : $($policy.Name)"    -ForegroundColor White
+                Write-Host "  ID            : $($policy.Id)"      -ForegroundColor Gray
+                Write-Host "  Version       : $($policy.Version)" -ForegroundColor Gray
+                Write-Host "  Intent        : $($policy.Intent)"  -ForegroundColor Gray
+
+                # Decode RequirementRules
+                if ($policy.RequirementRules) {
+                    try {
+                        $reqRules = $policy.RequirementRules | ConvertFrom-Json
+                        Write-Host "`n  Requirement Rules:" -ForegroundColor Cyan
+                        Write-Host "    OS Architecture   : $($reqRules.RequiredOSArchitecture)"     -ForegroundColor Gray
+                        Write-Host "    Min Windows Build : $($reqRules.MinimumWindows10BuildNumer)" -ForegroundColor Gray
+                        Write-Host "    Run as 32-bit     : $($reqRules.RunAs32Bit)"                 -ForegroundColor Gray
+                    } catch {
+                        Write-Warning "  Could not parse RequirementRules: $($_.Exception.Message)"
+                    }
                 }
 
-                Write-Host "Extracted JSON length    : $($jsonString.Length) characters" -ForegroundColor Cyan
-
-                try {
-                    $jsonObject = $jsonString | ConvertFrom-Json
-
-                    # Isolate just the policy matching our AppID (fall back to all policies)
-                    $targetPolicies = @($jsonObject | Where-Object { $_.Id -eq $AppID })
-                    if ($targetPolicies.Count -eq 0) {
-                        Write-Warning "App ID '$AppID' not found directly in JSON array; showing all policies."
-                        $targetPolicies = @($jsonObject)
+                # Decode InstallEx
+                if ($policy.InstallEx) {
+                    try {
+                        $installEx = $policy.InstallEx | ConvertFrom-Json
+                        Write-Host "`n  Install Settings:" -ForegroundColor Cyan
+                        Write-Host "    Run As            : $($installEx.RunAs)"               -ForegroundColor Gray
+                        Write-Host "    Requires Logon    : $($installEx.RequiresLogon)"       -ForegroundColor Gray
+                        Write-Host "    Max Runtime (min) : $($installEx.MaxRunTimeInMinutes)" -ForegroundColor Gray
+                        Write-Host "    Max Retries       : $($installEx.MaxRetries)"          -ForegroundColor Gray
+                    } catch {
+                        Write-Warning "  Could not parse InstallEx: $($_.Exception.Message)"
                     }
+                }
 
-                    # Save full prettified JSON
-                    $prettyJson     = $jsonObject | ConvertTo-Json -Depth 10
-                    $jsonOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_AppWorkload.json"
-                    $prettyJson | Out-File -FilePath $jsonOutputPath -Encoding UTF8
-                    Write-Host "JSON saved to            : $jsonOutputPath" -ForegroundColor Green
-
-                    # Per-policy summary and decoded fields
-                    Write-Host "`nPolicy Summary:" -ForegroundColor Yellow
-                    foreach ($policy in $targetPolicies) {
-                        Write-Host "  Name          : $($policy.Name)"    -ForegroundColor White
-                        Write-Host "  ID            : $($policy.Id)"      -ForegroundColor Gray
-                        Write-Host "  Version       : $($policy.Version)" -ForegroundColor Gray
-                        Write-Host "  Intent        : $($policy.Intent)"  -ForegroundColor Gray
-
-                        # Decode RequirementRules
-                        if ($policy.RequirementRules) {
-                            try {
-                                $reqRules = $policy.RequirementRules | ConvertFrom-Json
-                                Write-Host "`n  Requirement Rules:" -ForegroundColor Cyan
-                                Write-Host "    OS Architecture   : $($reqRules.RequiredOSArchitecture)"     -ForegroundColor Gray
-                                Write-Host "    Min Windows Build : $($reqRules.MinimumWindows10BuildNumer)" -ForegroundColor Gray
-                                Write-Host "    Run as 32-bit     : $($reqRules.RunAs32Bit)"                 -ForegroundColor Gray
-                            } catch {
-                                Write-Warning "  Could not parse RequirementRules: $($_.Exception.Message)"
-                            }
-                        }
-
-                        # Decode InstallEx
-                        if ($policy.InstallEx) {
-                            try {
-                                $installEx = $policy.InstallEx | ConvertFrom-Json
-                                Write-Host "`n  Install Settings:" -ForegroundColor Cyan
-                                Write-Host "    Run As            : $($installEx.RunAs)"               -ForegroundColor Gray
-                                Write-Host "    Requires Logon    : $($installEx.RequiresLogon)"       -ForegroundColor Gray
-                                Write-Host "    Max Runtime (min) : $($installEx.MaxRunTimeInMinutes)" -ForegroundColor Gray
-                                Write-Host "    Max Retries       : $($installEx.MaxRetries)"          -ForegroundColor Gray
-                            } catch {
-                                Write-Warning "  Could not parse InstallEx: $($_.Exception.Message)"
-                            }
-                        }
-
-                        # Decode DetectionRule (including base64 ScriptBody)
-                        if ($policy.DetectionRule) {
-                            try {
-                                $detectionRules = @($policy.DetectionRule | ConvertFrom-Json)
-                                Write-Host "`n  Detection Rule:" -ForegroundColor Cyan
-                                foreach ($rule in $detectionRules) {
-                                    Write-Host "    Detection Type : $($rule.DetectionType)" -ForegroundColor Gray
-                                    if ($rule.DetectionText) {
+                # Decode DetectionRule (including base64 ScriptBody)
+                if ($policy.DetectionRule) {
+                    try {
+                        $detectionRules = @($policy.DetectionRule | ConvertFrom-Json)
+                        Write-Host "`n  Detection Rule:" -ForegroundColor Cyan
+                        foreach ($rule in $detectionRules) {
+                            Write-Host "    Detection Type : $($rule.DetectionType)" -ForegroundColor Gray
+                            if ($rule.DetectionText) {
+                                try {
+                                    $detectionText = $rule.DetectionText | ConvertFrom-Json
+                                    if ($detectionText.ScriptBody) {
                                         try {
-                                            $detectionText = $rule.DetectionText | ConvertFrom-Json
-                                            if ($detectionText.ScriptBody) {
-                                                try {
-                                                    $decodedScript = [System.Text.Encoding]::UTF8.GetString(
-                                                        [System.Convert]::FromBase64String($detectionText.ScriptBody)
-                                                    )
-                                                    # Strip BOM (U+FEFF) if present
-                                                    $decodedScript = $decodedScript.TrimStart([char]0xFEFF)
+                                            $decodedScript = [System.Text.Encoding]::UTF8.GetString(
+                                                [System.Convert]::FromBase64String($detectionText.ScriptBody)
+                                            )
+                                            # Strip BOM (U+FEFF) if present
+                                            $decodedScript = $decodedScript.TrimStart([char]0xFEFF)
 
-                                                    Write-Host "`n    Decoded Detection Script:" -ForegroundColor Cyan
-                                                    Write-Host $decodedScript -ForegroundColor White
+                                            Write-Host "`n    Decoded Detection Script:" -ForegroundColor Cyan
+                                            Write-Host $decodedScript -ForegroundColor White
 
-                                                    $scriptHeader = @"
+                                            $scriptHeader = @"
 # Detection Rule Script for $($policy.Name)
 # Policy ID     : $($policy.Id)
 # Extracted on  : $(Get-Date)
 # Detection Type: $($rule.DetectionType)
 
 "@
-                                                    $scriptOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_DetectionRule.ps1"
-                                                    ($scriptHeader + $decodedScript) | Out-File -FilePath $scriptOutputPath -Encoding UTF8
-                                                    Write-Host "    Detection script saved to: $scriptOutputPath" -ForegroundColor Green
-                                                } catch {
-                                                    Write-Warning "    Could not decode base64 script: $($_.Exception.Message)"
-                                                }
-                                            }
+                                            $scriptOutputPath = Join-Path $OutputDir "$($AppID)_$($dateTimeString)_DetectionRule.ps1"
+                                            ($scriptHeader + $decodedScript) | Out-File -FilePath $scriptOutputPath -Encoding UTF8
+                                            Write-Host "    Detection script saved to: $scriptOutputPath" -ForegroundColor Green
                                         } catch {
-                                            Write-Warning "    Could not parse DetectionText JSON: $($_.Exception.Message)"
+                                            Write-Warning "    Could not decode base64 script: $($_.Exception.Message)"
                                         }
                                     }
+                                } catch {
+                                    Write-Warning "    Could not parse DetectionText JSON: $($_.Exception.Message)"
                                 }
-                            } catch {
-                                Write-Warning "  Could not parse DetectionRule JSON: $($_.Exception.Message)"
                             }
                         }
-
-                        Write-Host ""
+                    } catch {
+                        Write-Warning "  Could not parse DetectionRule JSON: $($_.Exception.Message)"
                     }
-
-                } catch {
-                    Write-Error "Failed to parse AppWorkload JSON: $($_.Exception.Message)"
-                    Write-Host "Raw extracted string:" -ForegroundColor Red
-                    Write-Host $jsonString
                 }
+
+                Write-Host ""
             }
         }
     } catch {
