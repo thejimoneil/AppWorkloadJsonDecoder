@@ -87,8 +87,12 @@ JSON saved to            : 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48
 Policy Summary:
   Name          : VLC
   ID            : 66de285e-94ce-49ef-9d29-8ab814df9db6
+  GRS Value     : 9f5e5f2f-2b52-4f79-9c8d-6a9e10dd1f89
+  User Entra ID : 11111111-2222-3333-4444-555555555555
   Version       : 1
   Intent        : 1 (Available)
+  App RegKey    : HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps\*\66de285e-94ce-49ef-9d29-8ab814df9db6
+  GRS RegKey    : HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps\*\GRS\9f5e5f2f-2b52-4f79-9c8d-6a9e10dd1f89
   Install Cmd   : "C:\Program Files\VideoLAN\VLC\vlc-3.0.16-win64.exe" /L=1033 /S
 
   Requirement Rules:
@@ -130,7 +134,7 @@ IME entries saved to: 66de285e-94ce-49ef-9d29-8ab814df9db6_2025-10-14_06-48-58_I
 | Problem | Solution |
 |---------|----------|
 | Access Denied | Run PowerShell as Administrator |
-| No entries found | Verify the App ID is correct; check log file paths with `-LogDir` |
+| No entries found | Verify the App ID is correct; check log file paths with `-LogDir`. If `AppWorkload.log` was recently refreshed/rolled over and no `Get policies =` entries are found, run an Intune sync and check again in 1-2 minutes. |
 | Execution policy error | `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` |
 | Could not decode base64 | The detection rule may use a different detection type (non-script) |
 
