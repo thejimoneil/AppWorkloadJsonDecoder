@@ -66,6 +66,7 @@ $IMELog           = Join-Path $LogDir "IntuneManagementExtension.log"
 
 # Fallback datetime string used for output file naming
 $dateTimeString = (Get-Date).ToString("yyyy-MM-dd_HH-mm-ss")
+$win32AppsRegRoot = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\IntuneManagementExtension\Win32Apps"
 
 Write-Host "`n=== Intune App Install Analyzer ===" -ForegroundColor Cyan
 Write-Host "App ID      : $AppID"        -ForegroundColor White
@@ -137,6 +138,48 @@ function Get-DetectionTypeLabel {
         default { "Unknown" }
     }
     return "$Value ($label)"
+}
+
+# ---------------------------------------------------------------------------
+# Helper: get first non-empty property value from an object by candidate names.
+# ---------------------------------------------------------------------------
+function Get-FirstPropertyValue {
+    param(
+        [Parameter(Mandatory = $true)] $Object,
+        [Parameter(Mandatory = $true)] [string[]] $PropertyNames
+    )
+    foreach ($name in $PropertyNames) {
+        if ($Object.PSObject.Properties.Name -contains $name) {
+            $value = $Object.$name
+            if ($null -ne $value) {
+                $text = "$value".Trim()
+                if (-not [string]::IsNullOrWhiteSpace($text)) {
+                    return $text
+                }
+            }
+        }
+    }
+    return $null
+}
+
+# ---------------------------------------------------------------------------
+# Helper: get first regex-captured value from JSON text.
+# ---------------------------------------------------------------------------
+function Get-FirstRegexValue {
+    param(
+        [string]$JsonText,
+        [string[]]$Patterns
+    )
+    foreach ($pattern in $Patterns) {
+        $match = [regex]::Match($JsonText, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if ($match.Success) {
+            $value = $match.Groups[1].Value.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                return $value
+            }
+        }
+    }
+    return $null
 }
 
 # ---------------------------------------------------------------------------
@@ -221,7 +264,7 @@ if (-not (Test-Path $AppWorkloadLog)) {
         $targetPolicies = @()
 
         if ($allPolicyLines.Count -eq 0) {
-            Write-Warning "No 'Get policies =' entries found in AppWorkload.log"
+            Write-Warning "No 'Get policies =' entries found in AppWorkload.log. This can happen right after log refresh/rollover. Run an Intune sync and check again in 1-2 minutes."
         } else {
             # Walk from newest to oldest.  For each line that contains the
             # AppID as plain text (quick pre-filter), parse the JSON and
@@ -280,10 +323,44 @@ if (-not (Test-Path $AppWorkloadLog)) {
             # Per-policy summary and decoded fields
             Write-Host "`nPolicy Summary:" -ForegroundColor Yellow
             foreach ($policy in $targetPolicies) {
+                $policyJsonForSearch = $policy | ConvertTo-Json -Depth 10 -Compress
+                $grsValue = Get-FirstPropertyValue -Object $policy -PropertyNames @(
+                    "GRSValue", "GrsValue", "GRS", "Grs", "GRSId", "GrsId", "GRSHash", "GrsHash"
+                )
+                if (-not $grsValue) {
+                    $grsValue = Get-FirstRegexValue -JsonText $policyJsonForSearch -Patterns @(
+                        '"(?:grs|grsvalue|grsid|grshash)"\s*:\s*"([^"]+)"',
+                        '"(?:grs|grsvalue|grsid|grshash)"\s*:\s*([0-9]+)'
+                    )
+                }
+
+                $userEntraId = Get-FirstPropertyValue -Object $policy -PropertyNames @(
+                    "EntraUserId", "AadUserId", "AADUserId", "AzureAdUserId", "AzureADUserId", "UserObjectId", "TargetedUserId", "UserId"
+                )
+                if (-not $userEntraId) {
+                    $userEntraId = Get-FirstRegexValue -JsonText $policyJsonForSearch -Patterns @(
+                        '"(?:[^"]*(?:entra|aad|azuread)[^"]*|[^"]*user[^"]*object[^"]*id[^"]*)"\s*:\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"'
+                    )
+                }
+
                 Write-Host "  Name          : $($policy.Name)"    -ForegroundColor White
                 Write-Host "  ID            : $($policy.Id)"      -ForegroundColor Gray
+                if ($grsValue) {
+                    Write-Host "  GRS Value     : $grsValue" -ForegroundColor Gray
+                } else {
+                    Write-Host "  GRS Value     : (not found in policy JSON)" -ForegroundColor DarkYellow
+                }
+                if ($userEntraId) {
+                    Write-Host "  User Entra ID : $userEntraId" -ForegroundColor Gray
+                }
                 Write-Host "  Version       : $($policy.Version)" -ForegroundColor Gray
                 Write-Host "  Intent        : $(Get-IntentLabel $policy.Intent)"  -ForegroundColor Gray
+                Write-Host "  App RegKey    : $win32AppsRegRoot\*\$($policy.Id)" -ForegroundColor Gray
+                if ($grsValue) {
+                    Write-Host "  GRS RegKey    : $win32AppsRegRoot\*\GRS\$grsValue" -ForegroundColor Gray
+                } else {
+                    Write-Host "  GRS RegKey    : $win32AppsRegRoot\*\GRS\{GRSValue}" -ForegroundColor DarkYellow
+                }
                 if ($policy.InstallCommandLine) {
                     Write-Host "  Install Cmd   : $($policy.InstallCommandLine)" -ForegroundColor Gray
                 }
